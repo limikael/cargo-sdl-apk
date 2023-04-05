@@ -10,3 +10,4 @@ That is, a simple command to package up an APK and upload it to your phone and s
 The way it works internally is by automating the steps described 
 [in this article](https://julhe.github.io/posts/building-an-android-app-with-rust-and-sdl2/) by Julian Heinken.
 
+I created it as a tool for my UI library [Appy](https://github.com/limikael/appy), but it can be used for other Rust SDL projects as well.
