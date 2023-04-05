@@ -11,3 +11,14 @@ The way it works internally is by automating the steps described
 [in this article](https://julhe.github.io/posts/building-an-android-app-with-rust-and-sdl2/) by Julian Heinken.
 
 I created it as a tool for my UI library [Appy](https://github.com/limikael/appy), but it can be used for other Rust SDL projects as well.
+
+It currently suffers from complete lack of documentation and some wierd assumptions made, such as you need to call the app you are building "main".
+
+But basically the way to use it is:
+
+1. Set the environment variables:
+   * `ANDROID_HOME` pointing to the Android SDK.
+   * `ANDROID_NDK_HOME` pointing to the Android NDK.
+   * `SDL` pointing to the SDL source dir.
+
+2. Run `cargo sdl-apk build` or `cargo sdl-apk run`.
