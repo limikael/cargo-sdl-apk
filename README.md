@@ -12,7 +12,9 @@ The way it works internally is by automating the steps described
 
 I created it as a tool for my UI library [Appy](https://github.com/limikael/appy), but it can be used for other Rust SDL projects as well.
 
-It currently suffers from complete lack of documentation and some wierd assumptions made, such as you need to call the app you are building "main".
+It currently suffers from complete lack of documentation.
+
+The lib target you are building must have its default name, i.e. same as the package name.
 
 But basically the way to use it is:
 
