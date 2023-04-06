@@ -300,13 +300,16 @@ fn create_android_project() {
 
     // Copy libmain.so to all targets
     for (android_name, rust_name) in get_android_targets() {
+        let package_name=get_cargo_toml_string(vec!["package","name"]).expect("Can't get package name");
+        let copy_from=format!("debug/lib{}.so",package_name);
+
         let android_dir = path_concat(vec![
             "target/android-project/app/src/main/jniLibs",
             android_name,
         ]);
         create_dir_all(android_dir).unwrap();
         copy(
-            Path::new(&*path_concat(vec!["target", rust_name, "debug/libmain.so"])),
+            Path::new(&*path_concat(vec!["target", rust_name, &*copy_from])),
             Path::new(&*path_concat(vec![
                 "target/android-project/app/src/main/jniLibs",
                 android_name,
