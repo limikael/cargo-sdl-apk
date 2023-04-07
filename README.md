@@ -22,10 +22,14 @@ Basic usage:
    ```
    cargo install --git https://github.com/limikael/cargo-sdl-apk.git
    ```
-
-1. Set the environment variables:
+2. Make sure you have the following:
+   * The SDL source, clone it from [here](https://github.com/libsdl-org/SDL). Make sure you have the `release-2.26.x` branch.
+   * Java. Muse be jdk17 (doesn't work with jdk19).
+   * Android SDK with command line tools.
+   * Android NDK.
+3. Set the environment variables:
    * `ANDROID_HOME` pointing to the Android SDK.
    * `ANDROID_NDK_HOME` pointing to the Android NDK.
    * `SDL` pointing to the SDL source dir.
 
-2. Run `cargo sdl-apk build` or `cargo sdl-apk run`.
+4. Run `cargo sdl-apk build` or `cargo sdl-apk run` from inside your SDL application crate.
