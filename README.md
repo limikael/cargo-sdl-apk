@@ -16,7 +16,12 @@ It currently suffers from complete lack of documentation.
 
 The lib target you are building must have its default name, i.e. same as the package name.
 
-But basically the way to use it is:
+Basic usage:
+
+1. It is not published as a crate (yet). Install it from GitHub with:
+   ```
+   cargo install --git https://github.com/limikael/cargo-sdl-apk.git
+   ```
 
 1. Set the environment variables:
    * `ANDROID_HOME` pointing to the Android SDK.
