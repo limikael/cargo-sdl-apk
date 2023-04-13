@@ -12,13 +12,24 @@ The way it works internally is by automating the steps described
 
 I created it as a tool for my UI library [Appy](https://github.com/limikael/appy), but it can be used for other Rust SDL projects as well.
 
-It currently suffers from complete lack of documentation and some wierd assumptions made, such as you need to call the app you are building "main".
+It currently suffers from complete lack of documentation.
 
-But basically the way to use it is:
+The lib target you are building must have its default name, i.e. same as the package name.
 
-1. Set the environment variables:
+Basic usage:
+
+1. It is not published as a crate (yet). Install it from GitHub with:
+   ```
+   cargo install --git https://github.com/limikael/cargo-sdl-apk.git
+   ```
+2. Make sure you have the following:
+   * The SDL source, clone it from [here](https://github.com/libsdl-org/SDL). Make sure you have the `release-2.26.x` branch.
+   * Java. Muse be jdk17 (doesn't work with jdk19).
+   * Android SDK with command line tools.
+   * Android NDK.
+3. Set the environment variables:
    * `ANDROID_HOME` pointing to the Android SDK.
    * `ANDROID_NDK_HOME` pointing to the Android NDK.
    * `SDL` pointing to the SDL source dir.
 
-2. Run `cargo sdl-apk build` or `cargo sdl-apk run`.
+4. Run `cargo sdl-apk build` or `cargo sdl-apk run` from inside your SDL application crate.
