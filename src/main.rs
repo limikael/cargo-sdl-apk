@@ -353,6 +353,7 @@ fn run_android() {
         .args([
             "-d",
             "install",
+            "-r",
             "target/android-project/app/build/outputs/apk/debug/app-debug.apk"
         ])
         .status()
@@ -365,19 +366,35 @@ fn run_android() {
         .unwrap()
         .success());
 
-    let mut activity = appid;
+    let mut activity = appid.clone();
     activity.push_str("/.MainActivity");
 
-    assert!(Command::new(p)
-        .args(["shell", "am", "start", "-n", &*activity])
+    assert!(Command::new(p.clone())
+        .args(["shell", "am", "start", "-W", "-n", &*activity])
         .status()
         .unwrap()
         .success());
 
-    /* wake up:
-    adb shell input keyevent KEYCODE_WAKEUP
-    [micke@micke-x455ya appaslib]$ adb shell input touchscreen swipe 930 880 930 380
-    */
+    let pid_vec = Command::new(p.clone())
+        .arg("shell")
+        .arg("pidof")
+        .arg(&*appid)
+        .output()
+        .unwrap() //except("Can't get pid")
+        .stdout;
+
+    let pid = std::str::from_utf8(&pid_vec).unwrap().trim();
+    let pid: u32 = pid
+        .parse()
+        .unwrap();
+
+    println!("Launched with PID: {}", pid);
+
+    assert!(Command::new(p.clone())
+        .args(["logcat","-v","color","--pid",&*pid.to_string()])
+        .status()
+        .unwrap()
+        .success());
 }
 
 /**
