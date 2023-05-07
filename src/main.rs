@@ -1,352 +1,82 @@
-/*
-
-todo:
-- specify main function
-- shoud be: (can use APPY_PLATFORM)
-    appy build --platform android
-    appy run --platfom android
-
-override cargo file?
-
-https://users.rust-lang.org/t/rustc-vs-cargo-which-is-better-to-build/35419/3
-https://doc.rust-lang.org/stable/cargo/commands/cargo-rustc.html
-rustflags
-
-*/
-
-use fs_extra::{copy_items, dir::CopyOptions, remove_items};
-use std::env;
-use std::fs::{copy, create_dir_all, read_to_string, write};
-use std::path::{Path, PathBuf};
+use std::fs::canonicalize;
 use std::process::Command;
-use symlink::symlink_dir;
-use toml::value::Value;
-use toml::Table;
+use std::path::Path;
 
-fn get_env_var(key: &str) -> String {
-    for (k, v) in env::vars() {
-        if k == key {
-            return v;
-        }
-    }
+mod build_bin_as_lib;
+use build_bin_as_lib::*;
 
-    panic!("Need env var: {}", key);
+mod util;
+use util::*;
+
+mod android_project;
+use android_project::*;
+
+const HELP: &str = "
+cargo-sdl-apk -- Build APKs with Rust and SDL.
+
+USAGE:
+  cargo sdl-apk <command> [OPTIONS] 
+
+COMMANDS:
+  build                 Builds APK from bin target.
+  run                   Build APK and run using adb.
+
+OPTIONS:
+  --manifest-path PATH  Path to Cargo.toml.
+  --example EXAMPLE     Build or run crate example.
+";
+
+#[derive(Debug)]
+struct SdlApkArgs {
+    manifest_path: String,
+    command: String,
+    example: Option<String>
 }
 
-fn path_concat(a: Vec<&str>) -> String {
-    let mut buf = PathBuf::new();
-    for s in a {
-        //		buf.push(s);
-        buf.push(s);
-    }
-    buf.into_os_string().into_string().unwrap()
-}
+fn parse_args()->Result<SdlApkArgs, pico_args::Error> {
+    let mut pargs = pico_args::Arguments::from_env();
 
-fn get_toml_string(table: &Table, mut path: Vec<&str>) -> Option<String> {
-    if path.len() == 1 {
-        if !table.contains_key(path[0]) {
-            return None;
-        }
-
-        return match table[path[0]].clone() {
-            Value::String(s) => Some(s),
-            _ => None,
-        };
+    let mut cmd=pargs.free_from_str()?;
+    if cmd=="sdl-apk" {
+        cmd=pargs.free_from_str()?;
     }
 
-    let id = path.remove(0);
-    match table[id].clone() {
-        Value::Table(t) => get_toml_string(&t, path),
-        _ => None,
-    }
-}
-
-fn get_cargo_toml_string(path: Vec<&str>) -> Option<String> {
-    let config = {
-        let f = read_to_string("Cargo.toml");
-        if let Ok(f) = f {
-            f.parse::<Table>().unwrap()
-        } else {
-            panic!("Unable to read Cargo.toml")
-        }
+    let args=SdlApkArgs {
+        manifest_path: pargs.value_from_str("--manifest-path").unwrap_or("Cargo.toml".to_string()),
+        example: pargs.opt_value_from_str("--example")?,
+        command: cmd
     };
 
-    get_toml_string(&config, path)
-}
-
-fn toml_insert(mut config: Table, mut path: Vec<&str>, v: Value) -> Table {
-    if path.len() == 1 {
-        config.insert(path[0].to_string(), v);
-        config
-    } else {
-        let component = path.remove(0);
-        let mut child = Table::new();
-
-        if config.contains_key(component) {
-            if let Value::Table(c) = config[component].clone() {
-                child = c;
-            }
-        }
-
-        let t = toml_insert(child, path, v);
-        config.insert(component.to_string(), Value::Table(t));
-        config
-    }
-}
-
-/*fn download_sdl() {
-create_dir_all("target/appy").unwrap();
-if !Path::new("target/appy/SDL").is_dir() {
-    assert!(Command::new("git")
-        .args(["clone","-b","release-2.26.x","--single-branch","https://github.com/libsdl-org/SDL.git","target/appy/SDL"])
-        .status()
-        .unwrap()
-        .success());
-}
-}*/
-
-fn build_sdl_for_android() {
-    let p = Path::new(&*get_env_var("ANDROID_NDK_HOME")).join("ndk-build");
-
-    assert!(Command::new(p)
-        .args([
-            "NDK_PROJECT_PATH=.",
-            "APP_BUILD_SCRIPT=./Android.mk",
-            "APP_PLATFORM=android-18"
-        ])
-        .current_dir(&*get_env_var("SDL"))
-        .status()
-        .unwrap()
-        .success());
-}
-
-fn create_android_cargo_config() {
-    let mut config = {
-        let f = read_to_string(".cargo/config.toml");
-        if let Ok(f) = f {
-            f.parse::<Table>().unwrap()
-        } else {
-            Table::new()
-        }
-    };
-
-    let tool_configs = vec![
-        (
-            vec!["target", "aarch64-linux-android", "ar"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-ar",
-        ),
-        (
-            vec!["target", "aarch64-linux-android", "linker"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang",
-        ),
-        (
-            vec!["target", "armv7-linux-androideabi", "ar"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/arm-linux-androideabi-ar",
-        ),
-        (
-            vec!["target", "armv7-linux-androideabi", "linker"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang",
-        ),
-        (
-            vec!["target", "i686-linux-android", "ar"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android-ar",
-        ),
-        (
-            vec!["target", "i686-linux-android", "linker"],
-            "toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android26-clang",
-        ),
-    ];
-
-    for (path, value) in tool_configs {
-        config = toml_insert(
-            config,
-            path,
-            Value::String(path_concat(vec![&*get_env_var("ANDROID_NDK_HOME"), value])),
-        );
+    let remaining = pargs.finish();
+    if !remaining.is_empty() {
+        return Err(pico_args::Error::ArgumentParsingFailed{
+            cause: format!("Unknown arguments: {:?}.", remaining)
+        });
     }
 
-    create_dir_all(".cargo").unwrap();
-    write(".cargo/config.toml", config.to_string()).expect("Unable to write file");
+    Ok(args)
 }
 
-fn get_android_targets() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("arm64-v8a", "aarch64-linux-android"),
-        ("armeabi-v7a", "armv7-linux-androideabi"),
-        ("x86", "i686-linux-android"),
-    ]
-}
-
-fn copy_android_sdl_deps() {
-    for (android_name, rust_name) in get_android_targets() {
-        let rust_dir = path_concat(vec!["target", rust_name, "debug", "deps"]);
-
-        create_dir_all(rust_dir).unwrap();
-        copy(
-            Path::new(&*path_concat(vec![
-                &*get_env_var("SDL"),
-                "libs",
-                android_name,
-                "libSDL2.so",
-            ])),
-            Path::new(&*path_concat(vec![
-                "target",
-                rust_name,
-                "debug",
-                "deps",
-                "libSDL2.so",
-            ])),
-        )
-        .unwrap();
-    }
-}
-
-fn build_android_targets() {
-    for (_android_name, rust_name) in get_android_targets() {
-        assert!(Command::new("cargo")
-            .args(["build", "--lib", "--target", rust_name])
-            .status()
-            .unwrap()
-            .success());
-    }
-}
-
-fn get_android_app_id() -> String {
-    get_cargo_toml_string(vec!["package", "metadata", "appid"])
-        .expect("Set appid in Cargo.toml metadata!")
-}
-
-fn change_android_project_file(file_name: &str, replacements: Vec<(&str, &str)>) {
-    let mut content = read_to_string(path_concat(vec![
-        &*get_env_var("SDL"),
-        "android-project",
-        file_name,
-    ]))
-    .expect("Unable to read manifest file");
-
-    for (from, to) in replacements {
-        content = content.replace(from, to);
-    }
-
-    write(
-        path_concat(vec!["target/android-project", file_name]),
-        &content,
-    )
-    .expect("Unable to write file");
-}
-
-fn create_android_project() {
-    let appid = get_android_app_id();
-    let appname = get_cargo_toml_string(vec!["package", "metadata", "appname"])
-        .unwrap_or("Untitled".to_string());
-
-    // Copy template project from SDL
-    copy_items(
-        &[Path::new(&*path_concat(vec![
-            &*get_env_var("SDL"),
-            "android-project",
-        ]))],
-        Path::new(&*path_concat(vec!["target"])),
-        &CopyOptions::new().skip_exist(true),
-    )
-    .unwrap();
-
-    // Create main activity class
-    let java_main_folder =
-        Path::new("target/android-project/app/src/main/java").join(str::replace(&appid, ".", "/"));
-    create_dir_all(java_main_folder.clone()).unwrap();
-    let main_class = "
-		package $APP;
-
-		import org.libsdl.app.SDLActivity;
-
-		public class MainActivity extends SDLActivity {
-		}
-	";
-    let main_class = str::replace(main_class, "$APP", &appid);
-    write(java_main_folder.join("MainActivity.java"), &main_class).expect("Unable to write file");
-
-    // Change project files
-    change_android_project_file(
-        "app/src/main/AndroidManifest.xml",
-        vec![("SDLActivity", "MainActivity"), ("org.libsdl.app", &*appid)],
-    );
-
-    change_android_project_file("app/build.gradle", vec![("org.libsdl.app", &*appid)]);
-
-    change_android_project_file(
-        "app/src/main/res/values/strings.xml",
-        vec![("Game", &*appname)],
-    );
-
-    // Remove C sources
-    remove_items(&[Path::new(&*path_concat(vec![
-        "target",
-        "android-project",
-        "app",
-        "jni",
-        "src",
-    ]))])
-    .unwrap();
-
-    // Link SDL into project
-    if !Path::new("target/android-project/app/jni/SDL").is_dir() {
-        symlink_dir(
-            Path::new(&*get_env_var("SDL")),
-            Path::new("target/android-project/app/jni/SDL"),
-        )
-        .unwrap();
-    }
-
-    // Copy libmain.so to all targets
-    for (android_name, rust_name) in get_android_targets() {
-        let package_name=get_cargo_toml_string(vec!["package","name"]).expect("Can't get package name");
-        let package_name=package_name.replace("-","_");
-        let copy_from=format!("debug/lib{}.so",package_name);
-
-        let android_dir = path_concat(vec![
-            "target/android-project/app/src/main/jniLibs",
-            android_name,
-        ]);
-        create_dir_all(android_dir).unwrap();
-        copy(
-            Path::new(&*path_concat(vec!["target", rust_name, &*copy_from])),
-            Path::new(&*path_concat(vec![
-                "target/android-project/app/src/main/jniLibs",
-                android_name,
-                "libmain.so",
-            ])),
-        )
-        .unwrap();
-    }
-}
-
-fn build_android_project() {
-    assert!(Command::new("./gradlew")
-        .args(["assembleDebug"])
-        .current_dir("./target/android-project")
-        .status()
-        .unwrap()
-        .success());
-}
-
-fn build_android() {
+fn build_android(manifest_path: &Path, build_target:BuildTarget) {
     for k in &["ANDROID_HOME", "ANDROID_NDK_HOME", "SDL"] {
         let _check_val = get_env_var(k);
     }
 
-    build_sdl_for_android();
-    create_android_cargo_config();
-    copy_android_sdl_deps();
-    build_android_targets();
-    create_android_project();
-    build_android_project();
+    let targets=vec![
+    	"aarch64-linux-android",
+    	"armv7-linux-androideabi",
+    	"i686-linux-android"
+    ];
+
+    build_sdl_for_android(&targets);
+    let target_artifacts=build_bin_as_lib(&manifest_path,build_target,&targets);
+    build_android_project(&manifest_path,&target_artifacts);
 }
 
-fn run_android() {
-    build_android();
+fn run_android(manifest_path: &Path, build_target:BuildTarget) {
+    build_android(manifest_path,build_target);
 
-    let appid = get_android_app_id();
+    let appid = get_android_app_id(manifest_path);
 
     let p = Path::new(&*get_env_var("ANDROID_HOME")).join("platform-tools/adb");
     assert!(Command::new(p.clone())
@@ -397,33 +127,30 @@ fn run_android() {
         .success());
 }
 
-/**
- * cp -r target/appy/SDL/android-project target/appy/android-project
- * rm -r target/appy/android-project/app/jni/src
- * ln -s target/appy/SDL target/appy/android-project/app/jni/SDL
- */
+fn main() {
+    let args=match parse_args() {
+        Ok(v)=>v,
+        Err(e)=>{
+            eprintln!("Error: {}.", e);
+            println!("{}",HELP);
+            std::process::exit(1);
+        }
+    };
 
-pub fn main() {
-    let mut args: Vec<String> = env::args().collect();
+    let manifest_path=canonicalize(args.manifest_path).unwrap();
 
-    if args.len()>=1 && args[1]=="sdl-apk" {
-    	args.remove(1);
-    }
+    let build_target=match &args.example {
+        None=>BuildTarget::Bin,
+        Some(s)=>BuildTarget::Example(s.clone())
+    };
 
-    if args.len() != 2 {
-        println!("Usage: cargo-sdl-apk <cmd>");
-        println!("Commands:");
-        println!();
-        println!("  build");
-        println!("  run");
-        println!();
-
-        panic!("Bad args...");
-    } else if args[1] == "build" {
-        build_android();
-    } else if args[1] == "run" {
-        run_android();
-    } else {
-        panic!("Bad args...");
+    match &*args.command {
+        "build"=>build_android(&manifest_path,build_target),
+        "run"=>run_android(&manifest_path,build_target),
+        _=>{
+            eprintln!("Unknown command: {}.", args.command);
+            println!("{}",HELP);
+            std::process::exit(1);
+        }
     }
 }
