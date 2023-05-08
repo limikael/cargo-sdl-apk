@@ -18,7 +18,7 @@ USAGE:
   cargo sdl-apk <command> [OPTIONS] 
 
 COMMANDS:
-  build                 Builds APK from bin target.
+  build                 Build APK from bin target.
   run                   Build APK and run using adb.
 
 OPTIONS:
