@@ -2,6 +2,11 @@
 name = "cargo-sdl-apk"
 version = "0.1.0"
 edition = "2021"
+description="Build Android packages that use SDL"
+documentation = "https://docs.rs/cargo-sdl-apk"
+homepage = "https://github.com/limikael/cargo-sdl-apk"
+repository = "https://github.com/limikael/cargo-sdl-apk"
+license = "MIT"
 
 [dependencies]
 cargo = "0.70.1"
