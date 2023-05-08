@@ -1,5 +1,5 @@
 # cargo-sdl-apk
-Build Android packages that uses SDL.
+Build Android packages that use SDL.
 
 This cargo tool aims to be for [Rust SDL](https://docs.rs/sdl2/latest/sdl2/) what
 [cargo-apk](https://crates.io/crates/cargo-apk) is for [Glutin](https://crates.io/crates/glutin), 
