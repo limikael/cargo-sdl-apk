@@ -10,6 +10,7 @@ use cargo::util::Config as CargoConfig;
 use cargo_util::{ProcessBuilder};
 use std::sync::Mutex;
 use crate::util::*;
+use crate::BuildProfile;
 
 fn get_target_linker(rust_target_name: &str)->&str {
     match rust_target_name {
@@ -119,6 +120,7 @@ pub fn build_bin_as_lib(
         manifest_path:&Path,
         build_target: BuildTarget,
         targets:&Vec<&str>,
+        profile:BuildProfile
     )->HashMap<String,String> {
     let mut linkers:HashMap<String,String>=HashMap::new();
     for t in targets {
@@ -152,6 +154,8 @@ pub fn build_bin_as_lib(
     	&[],
     	CompileMode::Build
     ).unwrap();
+
+    build_config.requested_profile=profile.to_string().into();
 
     build_config.requested_kinds=targets.iter().map(|s|{
         CompileKind::Target(CompileTarget::new(s).unwrap())

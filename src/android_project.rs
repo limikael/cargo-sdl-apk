@@ -5,8 +5,9 @@ use std::fs::{copy, create_dir_all, read_to_string, write};
 use symlink::symlink_dir;
 use std::collections::HashMap;
 use crate::util::*;
+use crate::BuildProfile;
 
-pub fn build_sdl_for_android(targets: &Vec<&str>) {
+pub fn build_sdl_for_android(targets: &Vec<&str>, profile:BuildProfile) {
     let p = Path::new(&*get_env_var("ANDROID_NDK_HOME")).join("ndk-build");
 
     assert!(Command::new(p)
@@ -22,7 +23,10 @@ pub fn build_sdl_for_android(targets: &Vec<&str>) {
 
     for rust_name in targets {
         let android_name=get_target_android_name(rust_name);
-        let rust_dir=Path::new("target").join(rust_name).join("debug/deps");
+        let rust_dir=Path::new("target")
+            .join(rust_name)
+            .join(profile.to_string())
+            .join("deps");
 
         create_dir_all(rust_dir).expect("Unable to create target dir");
         copy(
@@ -32,7 +36,8 @@ pub fn build_sdl_for_android(targets: &Vec<&str>) {
                 .join("libSDL2.so"),
             Path::new("target")
                 .join(rust_name)
-                .join("debug/deps/libSDL2.so")
+                .join(profile.to_string())
+                .join("deps/libSDL2.so")
         ).expect("Unable to copy SDL dependencies");
     }
 }
@@ -155,17 +160,113 @@ fn change_android_project_file(manifest_dir: &Path, file_name: &str, replacement
     .expect("Unable to write file");
 }
 
+pub fn sign_android(
+        manifest_path: &Path, 
+        ks_file: Option<String>,
+        ks_pass: Option<String>
+    ) {
+    let manifest_dir=manifest_path.parent().unwrap();
+    let release_dir=manifest_dir.join("target/android-project/app/build/outputs/apk/release");
+    //println!("{:?}",release_dir);
+
+    // Find android build tools.
+    let tool_paths=std::fs::read_dir(Path::new(&*get_env_var("ANDROID_HOME")).join("build-tools")).unwrap();
+    let mut tool_paths:Vec<String>=tool_paths.map(|d|{
+        d.unwrap().path().file_name().unwrap()
+            .to_os_string().into_string().unwrap()
+    }).collect();
+    tool_paths.sort();
+    tool_paths.reverse();
+    let tools_version=tool_paths[0].clone();
+    println!("Using build-tools: {}",tools_version);
+
+    // Determine key file. Generate if needed.
+    let (key_file,key_pass)=if ks_file.is_some() {
+        (
+            ks_file.unwrap(),
+            ks_pass.expect("Need keystore password")
+        )
+    } else {
+        let key_path=release_dir.join("app-release.jks");
+        if !key_path.exists() {
+            println!("Generating keyfile...");
+            assert!(Command::new("keytool")
+                .arg("-genkey")
+                .arg("-dname").arg("CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, S=Unknown, C=Unknown")
+                .arg("-storepass").arg("android")
+                .arg("-keystore").arg(key_path.clone())
+                .arg("-keyalg").arg("RSA")
+                .arg("-keysize").arg("2048")
+                .arg("-validity").arg("10000")
+                .status()
+                .unwrap()
+                .success());
+        }
+
+        (
+            key_path.into_os_string().into_string().unwrap(),
+            "pass:android".to_string()
+        )
+    };
+
+    println!("Using keyfile: {}",key_file);
+
+    // Run zipalign.
+    let zipalign_path=Path::new(&*get_env_var("ANDROID_HOME"))
+        .join("build-tools").join(tools_version.clone()).join("zipalign");
+
+    assert!(Command::new(zipalign_path)
+        .arg("-v").arg("-f")
+        .arg("-p").arg("4")
+        .arg(release_dir.join("app-release-unsigned.apk"))
+        .arg(release_dir.join("app-release-unsigned-aligned.apk"))
+        .status()
+        .unwrap()
+        .success());
+
+    // Run apksigner
+    let apksigner_path=Path::new(&*get_env_var("ANDROID_HOME"))
+        .join("build-tools").join(tools_version.clone()).join("apksigner");
+
+    assert!(Command::new(apksigner_path)
+        .arg("sign")
+        .arg("-ks").arg(key_file)
+        .arg("-ks-pass").arg(key_pass)
+        .arg("-out").arg(release_dir.join("app-release.apk"))
+        .arg(release_dir.join("app-release-unsigned-aligned.apk"))
+        .status()
+        .unwrap()
+        .success());
+}
+
+// keytool -android blabla -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias
+// /home/micke/Android/Sdk/build-tools/30.0.3/zipalign -v -p 4 app-release-unsigned.apk app-release-unsigned-aligned.apk
+// /home/micke/Android/Sdk/build-tools/30.0.3/apksigner sign -ks my-release-key.jks -ks-pass pass:android -out app-release.apk app-release-unsigned-aligned.apk
+
 pub fn build_android_project(
         manifest_path: &Path, 
-        target_artifacts: &HashMap<String,String>) {
+        target_artifacts: &HashMap<String,String>,
+        profile:BuildProfile,
+        ks_file: Option<String>,
+        ks_pass: Option<String>
+    ) {
     let manifest_dir=manifest_path.parent().unwrap();
 
     create_android_project(manifest_path,target_artifacts);
 
+    let gradle_task=match profile {
+        BuildProfile::Debug=>"assembleDebug",
+        BuildProfile::Release=>"assembleRelease",
+    };
+
     assert!(Command::new("./gradlew")
-        .args(["assembleDebug"])
+        .args([gradle_task])
         .current_dir(manifest_dir.join("./target/android-project"))
         .status()
         .unwrap()
         .success());
+
+    if matches!(profile,BuildProfile::Release) {
+        sign_android(manifest_path,ks_file,ks_pass);
+    }
 }

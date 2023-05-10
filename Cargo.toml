@@ -1,6 +1,6 @@
 [package]
 name = "cargo-sdl-apk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description="Build Android packages that use SDL"
 documentation = "https://docs.rs/cargo-sdl-apk"
